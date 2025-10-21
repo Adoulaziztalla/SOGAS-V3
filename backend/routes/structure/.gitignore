@@ -1,0 +1,12 @@
+# Fichier: sogas-rh-app/.gitignore
+
+# Dépendances Node.js (Backend & Frontend)
+/backend/node_modules
+/frontend/node_modules
+
+# Fichiers de configuration sensibles
+/backend/.env
+
+# Fichiers de build
+/frontend/.next
+/frontend/out
