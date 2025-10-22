@@ -185,7 +185,146 @@ router.post('/sanctions', authMiddleware, async (req, res) => {
     }
 });
 
-// Assurez-vous que cette ligne est à la fin du fichier:
+// Fichier: backend/routes/hr/hrRoutes.js (AJOUTER LE CODE SUIVANT)
+
+// ... (Les schémas et routes /contracts et /sanctions sont au-dessus)
+
+// Schéma de validation pour l'enregistrement d'une visite médicale
+const medicalVisitSchema = Joi.object({
+    employee_id: Joi.number().integer().min(1).required(),
+    type_visite: Joi.string().valid('Embauche', 'Périodique', 'Reprise', 'A la demande').required(),
+    date_visite: Joi.date().iso().required(),
+    date_prochaine_visite: Joi.date().iso().min(Joi.ref('date_visite')).allow(null).optional(),
+    apte: Joi.boolean().required(),
+    restrictions: Joi.string().allow(null, '').optional(),
+    document_url: Joi.string().uri().allow(null, '').optional(),
+    // created_by_user_id est injecté par req.user.id
+});
+
+/**
+ * Route pour enregistrer une visite médicale.
+ * POST /api/hr/medical-visits
+ */
+router.post('/medical-visits', authMiddleware, async (req, res) => {
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+    
+    try {
+        const { error, value } = medicalVisitSchema.validate(req.body);
+        if (error) {
+            await connection.rollback();
+            return res.status(400).json({ message: error.details[0].message });
+        }
+        
+        // 1. Vérification : l'employé doit exister
+        const [empRows] = await connection.query('SELECT id FROM employees WHERE id = ?', [value.employee_id]);
+        if (empRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Employé non trouvé.' });
+        }
+
+        // 2. Insertion de la visite médicale
+        const [result] = await connection.query(`
+            INSERT INTO medical_visits (
+                employee_id, type_visite, date_visite, date_prochaine_visite, apte, 
+                restrictions, document_url, created_by_user_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            value.employee_id, value.type_visite, value.date_visite, value.date_prochaine_visite || null, value.apte,
+            value.restrictions, value.document_url, req.user.id
+        ]);
+        
+        const visitId = result.insertId;
+
+        await connection.commit();
+
+        res.status(201).json({
+            message: `Visite médicale de type "${value.type_visite}" enregistrée avec succès.`,
+            visitId: visitId
+        });
+
+    } catch (err) {
+        await connection.rollback();
+        console.error(err);
+        res.status(500).json({ message: 'Erreur serveur lors de l\'enregistrement de la visite médicale.' });
+    } finally {
+        connection.release();
+    }
+});
+
+
+// Schéma de validation pour l'enregistrement d'un AT/MS
+const accidentSchema = Joi.object({
+    employee_id: Joi.number().integer().min(1).required(),
+    type_evenement: Joi.string().valid('Arrêt maladie (MS)', 'Accident de travail (AT)', 'Maladie professionnelle (MP)').required(), // Types AT/MS/MP
+    date_declaration: Joi.date().iso().required(),
+    date_debut_arret: Joi.date().iso().required(),
+    date_fin_prevue: Joi.date().iso().min(Joi.ref('date_debut_arret')).required(),
+    duree_jours: Joi.number().min(0.5).required(),
+    motif_cause: Joi.string().min(10).required(),
+    lieu_constatation: Joi.string().max(255).optional().allow(null, ''),
+    document_certificat_url: Joi.string().uri().allow(null, '').optional(),
+    statut_reglement: Joi.string().valid('Soumis', 'En instruction', 'Validé', 'Rejeté').default('Soumis')
+});
+
+/**
+ * Route pour enregistrer un Arrêt Maladie ou Accident de Travail.
+ * POST /api/hr/accidents
+ */
+router.post('/accidents', authMiddleware, async (req, res) => {
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+    
+    try {
+        const { error, value } = accidentSchema.validate(req.body);
+        if (error) {
+            await connection.rollback();
+            return res.status(400).json({ message: error.details[0].message });
+        }
+        
+        // 1. Vérification : l'employé doit exister
+        const [empRows] = await connection.query('SELECT id FROM employees WHERE id = ?', [value.employee_id]);
+        if (empRows.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Employé non trouvé.' });
+        }
+
+        // 2. Insertion de l'événement (AT/MS/MP)
+        const [result] = await connection.query(`
+            INSERT INTO work_accidents (
+                employee_id, type_evenement, date_declaration, date_debut_arret, 
+                date_fin_prevue, duree_jours, motif_cause, lieu_constatation, 
+                document_certificat_url, statut_reglement, created_by_user_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            value.employee_id, value.type_evenement, value.date_declaration, value.date_debut_arret,
+            value.date_fin_prevue, value.duree_jours, value.motif_cause, value.lieu_constatation,
+            value.document_certificat_url, value.statut_reglement, req.user.id
+        ]);
+        
+        const accidentId = result.insertId;
+
+        // 3. (A VENIR : Logique d'alerte à la direction et au chef de site si AT)
+
+        await connection.commit();
+
+        res.status(201).json({
+            message: `${value.type_evenement} déclaré et enregistré avec succès.`,
+            accidentId: accidentId
+        });
+
+    } catch (err) {
+        await connection.rollback();
+        console.error(err);
+        res.status(500).json({ message: 'Erreur serveur lors de la déclaration de l\'événement de santé.' });
+    } finally {
+        connection.release();
+    }
+});
+
+
 // module.exports = router;
 
 module.exports = router;

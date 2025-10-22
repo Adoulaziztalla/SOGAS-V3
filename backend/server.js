@@ -10,6 +10,7 @@ const siteRoutes = require('./routes/structure/siteRoutes');
 const employeeRoutes = require('./routes/employee/employeeRoutes'); // AJOUT: Importation des routes employé
 const timeRoutes = require('./routes/time/timeRoutes'); // AJOUT: Importation des routes de temps
 const hrRoutes = require('./routes/hr/hrRoutes');
+const adminRoutes = require('./routes/admin/adminRoutes'); // AJOUT
 
 // Charger les variables d'environnement du fichier .env
 dotenv.config();
@@ -44,6 +45,7 @@ app.use('/api/employee', employeeRoutes);
 app.use('/api/time', timeRoutes);
 
 app.use('/api/hr', hrRoutes);
+app.use('/api/admin', adminRoutes); // AJOUT
 
 // Démarrer le serveur et écouter les requêtes sur le port spécifié
 app.listen(PORT, () => {
